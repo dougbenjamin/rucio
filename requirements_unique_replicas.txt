@@ -1,0 +1,33 @@
+# Requirements for check_unique_replicas.py
+#
+# This script uses the Rucio client libraries from this repository.
+# Install the Rucio client with:
+#   pip install -e .
+#
+# Or install from PyPI:
+#   pip install rucio-clients
+#
+# Note: This file lists the dependencies that are expected to be available
+# when the Rucio client is properly installed.
+
+# Core dependencies (included with Rucio client)
+requests>=2.25.0
+urllib3>=1.26.0
+
+# Optional but recommended for better experience
+# These are typically already installed with Python 3.6+
+# and are part of the standard library
+
+# For the tool itself (all standard library):
+# - argparse (Python 3.2+)
+# - json (Python 2.6+)
+# - logging (Python 2.3+)
+# - threading (Python 2.4+)
+# - concurrent.futures (Python 3.2+)
+# - pathlib (Python 3.4+)
+# - time (Python 1.5+)
+# - sys (Python 1.0+)
+# - collections (Python 2.4+)
+# - datetime (Python 2.3+)
+
+# No additional dependencies required beyond Rucio client!
