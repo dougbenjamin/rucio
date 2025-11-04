@@ -143,7 +143,7 @@ class UniqueReplicaChecker:
         }
 
     def setup_logging(self):
-        """Configure logging to file and console."""
+        """Configure logging to file and console with immediate flushing."""
         # Create logs directory if it doesn't exist
         log_dir = Path('logs')
         log_dir.mkdir(exist_ok=True)
@@ -160,18 +160,47 @@ class UniqueReplicaChecker:
         if not isinstance(numeric_level, int):
             raise ValueError(f'Invalid log level: {self.log_level}')
 
-        # Configure root logger
-        logging.basicConfig(
-            level=numeric_level,
-            format=log_format,
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
+        # Create handlers with immediate flushing
+        # File handler - flush after every log message
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(numeric_level)
+        file_handler.setFormatter(logging.Formatter(log_format))
+
+        # Stream handler - flush after every log message
+        # Force unbuffered output by using line buffering
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(numeric_level)
+        stream_handler.setFormatter(logging.Formatter(log_format))
+
+        # Get root logger and configure it
+        root_logger = logging.getLogger()
+        root_logger.setLevel(numeric_level)
+        root_logger.addHandler(file_handler)
+        root_logger.addHandler(stream_handler)
+
+        # Force flush after each log record
+        # Store handlers for manual flushing if needed
+        self.log_handlers = [file_handler, stream_handler]
+
+        # Ensure stdout is line buffered (flush on newline)
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(line_buffering=True)
+            except Exception:
+                pass  # Ignore if reconfigure not supported
 
         logging.info(f"Logging to file: {log_file}")
         logging.info(f"Log level: {self.log_level}")
+        self.flush_logs()
+
+    def flush_logs(self):
+        """Force flush all log handlers."""
+        if hasattr(self, 'log_handlers'):
+            for handler in self.log_handlers:
+                handler.flush()
+        # Also flush stdout/stderr
+        sys.stdout.flush()
+        sys.stderr.flush()
 
     def update_stats(self, **kwargs):
         """Thread-safe statistics update."""
@@ -192,6 +221,7 @@ class UniqueReplicaChecker:
             logging.info(f"  Errors: {self.stats['errors']}")
             logging.info(f"  Skipped: {self.stats['skipped']}")
             logging.info("=" * 60)
+        self.flush_logs()
 
     def get_datasets_at_rse(self) -> List[Dict[str, str]]:
         """
@@ -208,6 +238,7 @@ class UniqueReplicaChecker:
             self.rate_limiter.release()
 
             logging.info(f"Found {len(datasets)} datasets at {self.rse}")
+            self.flush_logs()
             self.update_stats(datasets_found=len(datasets))
 
             return datasets
@@ -383,6 +414,7 @@ class UniqueReplicaChecker:
                         self.unique_files[file_info['scope']].append(file_info['name'])
                     unique_files_found += 1
                     logging.info(f"Found unique file: {file_key}")
+                    self.flush_logs()
 
         self.update_stats(
             datasets_processed=1,
@@ -391,6 +423,7 @@ class UniqueReplicaChecker:
         )
 
         logging.info(f"Completed dataset {scope}:{name}: {files_checked} files checked, {unique_files_found} unique")
+        self.flush_logs()
 
         return files_checked, unique_files_found
 
@@ -413,6 +446,7 @@ class UniqueReplicaChecker:
                 json.dump(output_data, f, indent=2, sort_keys=True)
 
             logging.info(f"Successfully saved results to {self.output_file}")
+            self.flush_logs()
 
             # Also save a simple CSV format for easy processing
             csv_file = output_path.with_suffix('.csv')
@@ -423,6 +457,7 @@ class UniqueReplicaChecker:
                         f.write(f"{scope},{name}\n")
 
             logging.info(f"Also saved CSV format to {csv_file}")
+            self.flush_logs()
 
         except Exception as e:
             logging.error(f"Failed to save results: {e}")
@@ -444,6 +479,7 @@ class UniqueReplicaChecker:
             logging.info(f"Max workers: {self.max_workers}")
             logging.info(f"Rate limit: {self.rate_limiter.max_calls} calls per {self.rate_limiter.time_window}s")
             logging.info("=" * 60)
+            self.flush_logs()
 
             # Get all datasets at the RSE
             datasets = self.get_datasets_at_rse()
@@ -454,6 +490,7 @@ class UniqueReplicaChecker:
 
             # Process datasets using thread pool
             logging.info(f"Starting multithreaded processing with {self.max_workers} workers")
+            self.flush_logs()
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all dataset processing tasks
@@ -469,6 +506,7 @@ class UniqueReplicaChecker:
                         future.result()
                     except Exception as e:
                         logging.error(f"Error processing dataset {dataset['scope']}:{dataset['name']}: {e}")
+                        self.flush_logs()
                         self.update_stats(errors=1)
 
                 # Print periodic statistics
@@ -498,12 +536,16 @@ class UniqueReplicaChecker:
                         count = len(self.unique_files[scope])
                         logging.info(f"  {scope}: {count} files")
 
+            self.flush_logs()
+
         except KeyboardInterrupt:
             logging.warning("\nReceived interrupt signal, shutting down...")
+            self.flush_logs()
             self.save_results()
             sys.exit(1)
         except Exception as e:
             logging.error(f"Fatal error: {e}", exc_info=True)
+            self.flush_logs()
             sys.exit(1)
 
 
